@@ -41,6 +41,8 @@ func (m machineState) String() string {
 		return "Sent kernel (HTTP)"
 	case machineStateInitrd:
 		return "Sent initrd(s) (HTTP)"
+	case machineStateZTP:
+		return "Sent remote ZTP(s) (HTTP)"
 	case machineStateBooted:
 		return "Booted machine"
 	default:
@@ -60,6 +62,7 @@ const (
 	machineStateIpxeScript
 	machineStateKernel
 	machineStateInitrd
+	machineStateZTP
 	machineStateBooted
 
 	machineStateIgnored

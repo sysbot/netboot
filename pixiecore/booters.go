@@ -162,6 +162,8 @@ func (b *apibooter) getAPIResponse(hw net.HardwareAddr) (io.ReadCloser, error) {
 }
 
 func (b *apibooter) BootSpec(m Machine) (*Spec, error) {
+	// TODO: map this call to backend
+	// body, err := b.getBootSpec(m.MAC, port)
 	body, err := b.getAPIResponse(m.MAC)
 	if body != nil {
 		defer body.Close()
