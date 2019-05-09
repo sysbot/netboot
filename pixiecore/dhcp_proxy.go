@@ -22,7 +22,9 @@ import (
 	"go.universe.tf/netboot/dhcp4"
 )
 
-func (s *Server) serveDHCP(conn *dhcp4.Conn) error {
+// serveDHCPProxy only handle the PXE portion of the DHCP process not the
+// initial network configuration bootstrapping of the interfaces
+func (s *Server) serveDHCPProxy(conn *dhcp4.Conn) error {
 	for {
 		pkt, intf, err := conn.RecvDHCP()
 		if err != nil {
@@ -33,29 +35,34 @@ func (s *Server) serveDHCP(conn *dhcp4.Conn) error {
 		}
 
 		if err = s.isBootDHCP(pkt); err != nil {
-			s.debug("DHCP", "Ignoring packet from %s: %s", pkt.HardwareAddr, err)
+			s.debug("DHCP_PROXY", "Ignoring packet from %s: %s", pkt.HardwareAddr, err)
 			continue
 		}
 		mach, fwtype, err := s.validateDHCP(pkt)
 		if err != nil {
-			s.log("DHCP", "Unusable packet from %s: %s", pkt.HardwareAddr, err)
+			s.log("DHCP_PROXY", "Unusable packet from %s: %s", pkt.HardwareAddr, err)
 			continue
 		}
 
-		s.debug("DHCP", "Got valid request to boot %s (%s)", mach.MAC, mach.Arch)
+		// track the interface at which the machine attempting to boot coming from
+		if intf != nil {
+			mach.Iface = intf
+		}
+
+		s.debug("DHCP_PROXY", "Got valid request to boot %s (%s)", mach.MAC, mach.Arch)
 
 		spec, err := s.Booter.BootSpec(mach)
 		if err != nil {
-			s.log("DHCP", "Couldn't get bootspec for %s: %s", pkt.HardwareAddr, err)
+			s.log("DHCP_PROXY", "Couldn't get bootspec for %s: %s", pkt.HardwareAddr, err)
 			continue
 		}
 		if spec == nil {
-			s.debug("DHCP", "No boot spec for %s, ignoring boot request", pkt.HardwareAddr)
+			s.debug("DHCP_PROXY", "No boot spec for %s, ignoring boot request", pkt.HardwareAddr)
 			s.machineEvent(pkt.HardwareAddr, machineStateIgnored, "Machine should not netboot")
 			continue
 		}
 
-		s.log("DHCP", "Offering to boot %s", pkt.HardwareAddr)
+		s.log("DHCP_PROXY", "Offering to boot %s", pkt.HardwareAddr)
 		if fwtype == FirmwarePixiecoreIpxe {
 			s.machineEvent(pkt.HardwareAddr, machineStateProxyDHCPIpxe, "Offering to boot iPXE")
 		} else {
@@ -65,30 +72,33 @@ func (s *Server) serveDHCP(conn *dhcp4.Conn) error {
 		// Machine should be booted.
 		serverIP, err := interfaceIP(intf)
 		if err != nil {
-			s.log("DHCP", "Want to boot %s on %s, but couldn't get a source address: %s", pkt.HardwareAddr, intf.Name, err)
+			s.log("DHCP_PROXY", "Want to boot %s on %s, but couldn't get a source address: %s", pkt.HardwareAddr, intf.Name, err)
 			continue
 		}
 
 		resp, err := s.offerDHCP(pkt, mach, serverIP, fwtype)
 		if err != nil {
-			s.log("DHCP", "Failed to construct ProxyDHCP offer for %s: %s", pkt.HardwareAddr, err)
+			s.log("DHCP_PROXY", "Failed to construct ProxyDHCP offer for %s: %s", pkt.HardwareAddr, err)
 			continue
 		}
 
 		if err = conn.SendDHCP(resp, intf); err != nil {
-			s.log("DHCP", "Failed to send ProxyDHCP offer for %s: %s", pkt.HardwareAddr, err)
+			s.log("DHCP_PROXY", "Failed to send ProxyDHCP offer for %s: %s", pkt.HardwareAddr, err)
 			continue
 		}
 	}
 }
 
 func (s *Server) isBootDHCP(pkt *dhcp4.Packet) error {
+	// TODO: full DHCP flow [1]
+	// [1] http://www.tcpipguide.com/free/t_DHCPLeaseAllocationProcess-2.htm
 	if pkt.Type != dhcp4.MsgDiscover {
 		return fmt.Errorf("packet is %s, not %s", pkt.Type, dhcp4.MsgDiscover)
 	}
 
-	if pkt.Options[93] == nil {
-		return errors.New("not a PXE boot request (missing option 93)")
+	if pkt.Options[93] == nil || pkt.Options[239] == nil {
+		s.log("DHCP_PROXY", "not a PXE boot request %s: %s", pkt.HardwareAddr, pkt.Options)
+		return errors.New("not a PXE boot request (missing option 93 or 239)")
 	}
 
 	return nil
@@ -97,7 +107,24 @@ func (s *Server) isBootDHCP(pkt *dhcp4.Packet) error {
 func (s *Server) validateDHCP(pkt *dhcp4.Packet) (mach Machine, fwtype Firmware, err error) {
 	fwt, err := pkt.Options.Uint16(93)
 	if err != nil {
-		return mach, 0, fmt.Errorf("malformed DHCP option 93 (required for PXE): %s", err)
+		s.log("DHCP", "DHCP option 93 missing (required for PXE), continue...", err)
+		return mach, 0, fmt.Errorf("either DHCP option 93 (required for PXE), or DHCP option 239 (required for ZTP) are missing: %s", err)
+
+		// fwt, err = pkt.Options.Uint16(239)
+		// if err != nil {
+		// 	s.log("DHCP_PROXY", "DHCP option 239 missing, continue with standard DHCP", err)
+		// }
+
+		// // To supporting Cumulus, we going to "detect" the Architecture
+		// // based purely on the PXE architecture option.
+		// // TODO: look at the vendor class identifier to see if we can match something up
+
+		// // OPTION:  60 ( 32) Vendor class identifier   onie_vendor:x86_64-cumulus_vx-r0
+		// // option vendor-class-identifier onie_vendor:arm-accton_as4610_54-r0
+		// s.log("DHCP_PROXY", "DHCP option 93 missing (required for PXE), continue as standard DHCP request", err)
+		// mach.Arch = ArchIA32
+		// mach.MAC = pkt.HardwareAddr
+		// return mach, FirmwareCumulusZTP, nil
 	}
 
 	// Basic architecture and firmware identification, based purely on
@@ -116,7 +143,8 @@ func (s *Server) validateDHCP(pkt *dhcp4.Packet) (mach Machine, fwtype Firmware,
 		mach.Arch = ArchX64
 		fwtype = FirmwareEFIBC
 	default:
-		return mach, 0, fmt.Errorf("unsupported client firmware type '%d' (please file a bug!)", fwtype)
+		// return mach, 0, fmt.Errorf("unsupported client firmware type '%d' (please file a bug!)", fwtype)
+		s.log("DHCP_PROXY", "DHCP option 93 missing (required for PXE), continue...", err)
 	}
 
 	// Now, identify special sub-breeds of client firmware based on
@@ -235,7 +263,7 @@ func (s *Server) offerDHCP(pkt *dhcp4.Packet, mach Machine, serverIP net.IP, fwt
 		// We've already gone through one round of chainloading, now
 		// we can finally chainload to HTTP for the actual boot
 		// script.
-		resp.BootFilename = fmt.Sprintf("http://%s:%d/_/ipxe?arch=%d&mac=%s", serverIP, s.HTTPPort, mach.Arch, mach.MAC)
+		resp.BootFilename = fmt.Sprintf("http://%s:%d/_/ipxe?arch=%d&mac=%s&ifname=%s", serverIP, s.HTTPPort, mach.Arch, mach.MAC, mach.Iface.Name)
 
 	default:
 		return nil, fmt.Errorf("unknown firmware type %d", fwtype)

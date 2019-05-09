@@ -59,9 +59,10 @@ const (
 	// refer to the fields in the Packet struct, and Marshal/Unmarshal
 	// will handle encoding for you.
 
-	OptTFTPServer      Option = 66 // string
-	OptBootFile        Option = 67 // string
-	OptDHCPMessageType Option = 53 // byte
+	OptTFTPServer          Option = 66  // string
+	OptBootFile            Option = 67  // string
+	OptDHCPMessageType     Option = 53  // byte
+	OptCumulusProvisionURL Option = 239 // string
 )
 
 // Options stores DHCP options.

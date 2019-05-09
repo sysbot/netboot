@@ -39,6 +39,7 @@ func serveHTTP(l net.Listener, handlers ...func(*http.ServeMux)) error {
 }
 
 func (s *Server) serveHTTP(mux *http.ServeMux) {
+	mux.HandleFunc("/_/ztp", s.handleZTP)
 	mux.HandleFunc("/_/ipxe", s.handleIpxe)
 	mux.HandleFunc("/_/file", s.handleFile)
 	mux.HandleFunc("/_/booting", s.handleBooting)

@@ -66,8 +66,14 @@ func (a Architecture) String() string {
 
 // A Machine describes a machine that is attempting to boot.
 type Machine struct {
-	MAC  net.HardwareAddr
-	Arch Architecture
+	MAC      net.HardwareAddr
+	Arch     Architecture
+	IP       net.IP
+	Metadata map[string]string
+	// the interface of the DHCP server host the machine attempting to
+	// boot is coming from. This info is then relayed back to the client
+	// so during HTTP requests, it can get the right info based on the port
+	Iface *net.Interface
 }
 
 // A Spec describes a kernel and associated configuration.
@@ -93,6 +99,9 @@ type Spec struct {
 	// responsibility to make the boot succeed, Pixiecore's
 	// involvement ends when it serves your script.
 	IpxeScript string
+
+	// Optional metadata to pass i.e. license/bios keys
+	Metadata map[string]string
 }
 
 func expandCmdline(tpl string, funcs template.FuncMap) (string, error) {
@@ -149,6 +158,8 @@ const (
 	FirmwareEFIBC                         // 64-bit x86 processor running EFI
 	FirmwareX86Ipxe                       // "Classic" x86 BIOS running iPXE (no UNDI support)
 	FirmwarePixiecoreIpxe                 // Pixiecore's iPXE, which has replaced the underlying firmware
+	FirmwareCumulusZTP                    // Cumulus ZTP firmware (requested option 239 instead of sending Option 97 as expected for PXE)
+	FirmwareAristaZTP                     // Arista ZTP firmware (requested option 67 instead of sending Option 97 as expected for PXE)
 )
 
 // A Server boots machines using a Booter.
@@ -157,6 +168,7 @@ type Server struct {
 
 	// Address to listen on, or empty for all interfaces.
 	Address string
+
 	// HTTP port for boot services.
 	HTTPPort int
 	// HTTP port for human-readable information. Can be the same as
@@ -185,7 +197,12 @@ type Server struct {
 	// enables coexistence of Pixiecore with another DHCP server.
 	//
 	// Currently only supported on Linux.
-	DHCPNoBind bool
+	DHCPNoBind        bool
+	DHCPAuthoritative bool
+
+	// support managing 1 set of mac:ip
+	DHCPStaticMac  net.HardwareAddr
+	DHCPStaticIPv4 net.IP
 
 	// Read UI assets from this path, rather than use the builtin UI
 	// assets. Used for development of Pixiecore.
@@ -214,7 +231,7 @@ func (s *Server) Serve() error {
 	}
 
 	newDHCP := dhcp4.NewConn
-	if s.DHCPNoBind {
+	if s.DHCPNoBind || s.DHCPAuthoritative {
 		newDHCP = dhcp4.NewSnooperConn
 	}
 
@@ -222,6 +239,12 @@ func (s *Server) Serve() error {
 	if err != nil {
 		return err
 	}
+
+	// dhcpAuth, err := dhcp4.NewConn(fmt.Sprintf("%s:%d", s.Address, s.DHCPPort))
+	// if err != nil {
+	// 	return err
+	// }
+
 	tftp, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", s.Address, s.TFTPPort))
 	if err != nil {
 		dhcp.Close()
@@ -251,7 +274,7 @@ func (s *Server) Serve() error {
 
 	s.debug("Init", "Starting Pixiecore goroutines")
 
-	go func() { s.errs <- s.serveDHCP(dhcp) }()
+	go func() { s.errs <- s.serveDHCPProxy(dhcp) }()
 	go func() { s.errs <- s.servePXE(pxe) }()
 	go func() { s.errs <- s.serveTFTP(tftp) }()
 	go func() { s.errs <- serveHTTP(http, s.serveHTTP) }()
