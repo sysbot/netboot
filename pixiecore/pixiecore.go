@@ -29,7 +29,7 @@ import (
 const (
 	portDHCP = 67
 	portTFTP = 69
-	portHTTP = 80
+	portHTTP = 8080
 	portPXE  = 4011
 )
 

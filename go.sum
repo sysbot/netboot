@@ -13,6 +13,7 @@ github.com/basvanbeek/opencensus-gokit-example v0.0.0-20180908172457-a52efcf4f31
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
 github.com/caffeinetv/citadel v0.0.0-20190502025147-988d4044d960 h1:jCwlc00kk7zladoTc4fRbNDFjSPWzJEmZOAglm032Ts=
 github.com/caffeinetv/citadel v0.0.0-20190502025147-988d4044d960/go.mod h1:4LytQ3JwgbqsGbTuqdpV0QMINW9WofXIsNiGjzmC38g=
+github.com/caffeinetv/citadel v0.1.2 h1:ON34PTbf6OljGjDBWB5i20r+iWs5IpMN6DBr+Jj+5T0=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/coreos/etcd v3.3.10+incompatible/go.mod h1:uF7uidLiAD3TWHmW31ZFd/JWoc32PjwdhPthX9715RE=
 github.com/coreos/go-etcd v2.0.0+incompatible/go.mod h1:Jez6KQU2B/sWsbdaef3ED8NzMklzPG4d5KIOhIy30Tk=

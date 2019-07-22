@@ -172,8 +172,6 @@ func (s *Server) handleZTP(w http.ResponseWriter, r *http.Request) {
 	hostname := sURL.Query().Get("hostname")
 	if hostname == "" {
 		s.debug("HTTP", "request %q from %s, missing HOSTNAME %s", sURL, r.RemoteAddr, hostname)
-		http.Error(w, "missing required hostname", http.StatusBadRequest)
-		return
 	} else {
 		if meta != nil {
 			meta["CAFFEINE_HOSTNAME"] = hostname
