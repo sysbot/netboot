@@ -2,7 +2,6 @@ package pixiecore
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -12,9 +11,11 @@ import (
 	"github.com/caffeinetv/citadel/model/machine"
 	"github.com/caffeinetv/citadel/pkg/inventory"
 	"github.com/gobuffalo/packr"
+	"github.com/openconfig/ygot/ygot"
 )
 
 var (
+	defaultInstallScript     = "install.sh.tpl"
 	defaultLeafInstallScript = "install.leaf.sh.tpl"
 	defaultMgmtInstallScript = "install.mgmt.sh.tpl"
 )
@@ -60,6 +61,10 @@ func expandZTPScript(tpl string, funcs template.FuncMap, data interface{}) (stri
 	return out.String(), nil
 }
 
+type DefaultTemplate struct {
+	NTPServer string `json:"ntp_server"`
+}
+
 type MgmtTemplate struct {
 	ServerV4   string `json:"server_v4"`
 	ServerV4Gw string `json:"server_v4_gateway"`
@@ -99,8 +104,13 @@ func (b *ztpbooter) BootSpec(m Machine) (*Spec, error) {
 		out string
 	)
 
+	n := ""
 	if _, ok := m.Metadata["CAFFEINE_HOSTNAME"]; !ok {
-		return nil, errors.New("missing hostname")
+		// return nil, errors.New("missing hostname")
+		n = "default"
+		fmt.Println("missing hostname, using default: ", n)
+	} else {
+		n = m.Metadata["CAFFEINE_HOSTNAME"]
 	}
 
 	// depending on when in mgmt mode, or leaf mode
@@ -109,11 +119,24 @@ func (b *ztpbooter) BootSpec(m Machine) (*Spec, error) {
 	// ex:
 	// when oob-mgmt, in ztp, there's no fremont-0-0 connected
 	// when fremont-0-s0, in ipxe, there's no fremont-0-s0 connected
-	hostMatch := strings.ToLower(m.Metadata["CAFFEINE_HOSTNAME"])
+	hostMatch := strings.ToLower(n)
 
 	host := b.inv.Single(hostMatch)
 	if host == nil {
-		return nil, errors.New("host not found")
+		// return nil, errors.New("host not found")
+		host = machine.New(
+			n,
+			[]ygot.Annotation{
+				&machine.Metadata{
+					ID:      0,
+					Serial:  "default",
+					Profile: "default",
+					Site:    "default",
+					Name:    n,
+				},
+			},
+		)
+		fmt.Println("no host found, creating a default...", host)
 	}
 
 	// this function generate the map of host to remote host and interfaces
@@ -329,14 +352,30 @@ func (b *ztpbooter) BootSpec(m Machine) (*Spec, error) {
 			return nil, fmt.Errorf(
 				"expanding ztp script %q: %v", defaultLeafInstallScript, err)
 		}
+	case "default":
+		var err error
+		out, err = expandZTPScript(
+			b.box.String(defaultInstallScript),
+			template.FuncMap{
+				"formatAsString": formatAsString,
+			},
+			DefaultTemplate{
+				// TODO localize region, system/component
+				NTPServer: "clock.fmt.he.net",
+				// mgmt0/eth0 is not configured here as it's using the DHCP address
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"expanding ztp script %q: %v", defaultInstallScript, err)
+		}
 	default:
 		return nil, fmt.Errorf("unknown profile")
 	}
 
-	ret := Spec{
+	return &Spec{
 		IpxeScript: out,
-	}
-	return &ret, nil
+	}, nil
 }
 
 func (b *ztpbooter) ReadBootFile(id ID) (io.ReadCloser, int64, error) {

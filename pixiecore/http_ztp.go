@@ -150,6 +150,7 @@ func (s *Server) handleZTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// allowing to override the IP address from the URL
+	s.debug("HTTP", "request %v", r)
 	ip := net.ParseIP(r.RemoteAddr)
 	ipStr := sURL.Query().Get("ip")
 	if ipStr == "" {

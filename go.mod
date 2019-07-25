@@ -8,6 +8,7 @@ require (
 	github.com/gobuffalo/packr v1.24.0
 	github.com/google/go-cmp v0.2.0
 	github.com/openconfig/gnmi v0.0.0-20180912164834-33a1865c3029 // indirect
+	github.com/openconfig/ygot v0.5.1-0.20190402233244-0c7dd99359dd
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/viper v1.3.1
 	go.uber.org/atomic v1.3.2 // indirect
